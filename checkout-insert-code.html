@@ -1,0 +1,96 @@
+<script>
+(function(){
+  var DATA_URL='https://cdn.jsdelivr.net/gh/ak478869711-hub/chuti-cvs-frozen@master/frozen-stores.json';
+  var CITY_ORDER=['基隆市','台北市','新北市','桃園市','新竹市','新竹縣','苗栗縣','台中市','彰化縣','南投縣','雲林縣','嘉義市','嘉義縣','台南市','高雄市','屏東縣','宜蘭縣','花蓮縣','台東縣','澎湖縣','金門縣','連江縣'];
+  var stores=null, loading=false;
+  function onCheckout(){ return /\/sf\/checkout\//.test(location.pathname); }
+  function esc(s){ return (s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m];}); }
+  function tw(s){ return (s||'').replace(/台/g,'臺'); }
+  function copyText(t){ try{ if(navigator.clipboard && window.isSecureContext){ navigator.clipboard.writeText(t); return; } }catch(e){} var ta=document.createElement('textarea'); ta.value=t; ta.style.cssText='position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(e){} document.body.removeChild(ta); }
+
+  function addBtn(){
+    if(!onCheckout()) return;
+    var qu=[].slice.call(document.querySelectorAll('h2,h3,h4')).find(function(e){ return e.children.length===0 && (e.textContent||'').trim()==='取貨資料'; });
+    if(!qu || document.getElementById('chuti-frozen-btn')) return;
+    var b=document.createElement('button');
+    b.id='chuti-frozen-btn'; b.type='button';
+    b.textContent='❄️ 用地圖找冷凍門市（複製店號）';
+    b.style.cssText='display:block;width:100%;margin:10px 0 6px;padding:13px;background:#3f8fb0;color:#fff;border:0;border-radius:10px;font-size:16px;font-weight:800;cursor:pointer';
+    b.onclick=openModal;
+    qu.parentNode.insertBefore(b, qu.nextSibling);
+  }
+
+  function ensureModal(){
+    if(document.getElementById('chuti-modal')) return;
+    var wrap=document.createElement('div'); wrap.id='chuti-modal';
+    wrap.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2147483647;display:none;align-items:flex-end;justify-content:center';
+    wrap.innerHTML='<div style="background:#fff;width:100%;max-width:520px;height:86vh;border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden;font-family:sans-serif"><div style="padding:12px 14px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:8px"><b id="chuti-title" style="font-size:16px;flex:1">❄️ 找冷凍取貨門市</b><span id="chuti-x" style="font-size:26px;cursor:pointer;padding:0 6px;line-height:1">×</span></div><div id="chuti-search" style="padding:10px 14px;border-bottom:1px solid #eee;display:flex;gap:8px"><select id="chuti-city" style="flex:0 0 110px;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:15px"><option value="">縣市</option></select><input id="chuti-kw" placeholder="打店名/路名/店號" style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:15px"></div><div id="chuti-cnt" style="padding:6px 14px;font-size:12px;color:#888"></div><div id="chuti-list" style="flex:1;overflow:auto;padding:0 14px 14px"></div></div>';
+    document.body.appendChild(wrap);
+    document.getElementById('chuti-x').onclick=closeModal;
+    wrap.addEventListener('click',function(e){ if(e.target===wrap) closeModal(); });
+    var sel=document.getElementById('chuti-city');
+    CITY_ORDER.forEach(function(c){ var o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
+    sel.onchange=render; document.getElementById('chuti-kw').addEventListener('input',render);
+  }
+  function openModal(){
+    ensureModal();
+    document.getElementById('chuti-search').style.display='flex';
+    document.getElementById('chuti-title').textContent='❄️ 找冷凍取貨門市';
+    document.getElementById('chuti-modal').style.display='flex';
+    if(!stores && !loading){ loading=true; document.getElementById('chuti-cnt').textContent='載入門市中…';
+      fetch(DATA_URL).then(function(r){return r.json();}).then(function(d){ stores=d; loading=false; render(); }).catch(function(){ document.getElementById('chuti-cnt').textContent='載入失敗，請稍後再試。'; });
+    } else render();
+  }
+  function closeModal(){ var m=document.getElementById('chuti-modal'); if(m) m.style.display='none'; }
+  function render(){
+    if(!stores) return;
+    document.getElementById('chuti-search').style.display='flex';
+    var city=document.getElementById('chuti-city').value, kw=document.getElementById('chuti-kw').value.trim();
+    var list=document.getElementById('chuti-list'), cnt=document.getElementById('chuti-cnt');
+    if(!city){ list.innerHTML=''; cnt.textContent='請先選縣市，再打關鍵字縮小範圍。'; return; }
+    var rows=stores.filter(function(s){ return s.c===city; });
+    if(kw){ rows=rows.filter(function(s){ return (s.n&&s.n.indexOf(kw)>=0)||(s.a&&s.a.indexOf(kw)>=0)||(s.i&&s.i.indexOf(kw)>=0); }); }
+    var total=rows.length, show=rows.slice(0,60);
+    cnt.textContent=total?('冷凍門市 '+total+' 家'+(total>60?'，顯示前 60，請打關鍵字縮小':'')):'找不到，換個關鍵字。';
+    list.innerHTML=show.map(function(s){ return '<div style="border:1px solid #eee;border-radius:12px;padding:10px 12px;margin:10px 0"><div style="font-weight:800;color:#c65b62">'+s.i+' <span style="color:#333">'+esc(s.n)+'</span></div><div style="color:#888;font-size:13px;margin:3px 0 8px">'+esc(s.a)+'</div><button type="button" data-i="'+s.i+'" data-n="'+esc(s.n)+'" data-c="'+s.c+'" class="chuti-pick" style="background:#3f8fb0;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:700;font-size:14px;cursor:pointer">選這家 →</button></div>'; }).join('');
+  }
+  document.addEventListener('click',function(e){ var b=e.target.closest && e.target.closest('.chuti-pick'); if(!b) return; pick(b.getAttribute('data-i'), b.getAttribute('data-n'), b.getAttribute('data-c')); });
+
+  function pick(id,name,city){
+    copyText(id);
+    var cityTw=tw(city);
+    document.getElementById('chuti-search').style.display='none';
+    document.getElementById('chuti-title').textContent='✅ 已複製店號';
+    document.getElementById('chuti-cnt').textContent='';
+    var list=document.getElementById('chuti-list');
+    list.innerHTML='<div style="text-align:center;padding:6px 4px">'
+      +'<div style="font-size:32px;font-weight:900;color:#c65b62;letter-spacing:3px;margin-top:6px">'+id+'</div>'
+      +'<div style="font-size:17px;font-weight:800;margin:4px 0 2px">'+esc(name)+'</div>'
+      +'<div style="color:#888;font-size:13px">'+cityTw+'</div>'
+      +'<button type="button" id="chuti-recopy" style="background:#3f8fb0;color:#fff;border:0;border-radius:8px;padding:11px 18px;font-weight:800;font-size:15px;cursor:pointer;margin:14px 0 18px">再複製店號</button>'
+      +'<div style="background:#eaf4f8;border:1px solid #d6e8ef;border-radius:12px;padding:14px 16px;text-align:left;font-size:14px;color:#33586a;line-height:2">'
+        +'<b style="color:#2b78a0">接下來這樣填：</b><br>① 關掉這個視窗<br>② 點下面的「<b>請選擇門市</b>」<br>③ 門市店號 → <b>貼上</b>（'+id+'）<br>④ 門市名稱 → 打「<b>'+esc(name)+'</b>」<br>⑤ 縣市 → 選「<b>'+cityTw+'</b>」<br>⑥ 按<b>確定</b></div>'
+      +'<div style="display:flex;gap:8px;margin-top:16px"><button type="button" id="chuti-back" style="flex:1;background:#fff;color:#3f8fb0;border:1px solid #3f8fb0;border-radius:8px;padding:11px;font-weight:700;font-size:14px;cursor:pointer">← 重新選</button><button type="button" id="chuti-close2" style="flex:1;background:#3f8fb0;color:#fff;border:0;border-radius:8px;padding:11px;font-weight:700;font-size:14px;cursor:pointer">關閉去填 →</button></div>'
+      +'</div>';
+    document.getElementById('chuti-recopy').onclick=function(){ copyText(id); this.textContent='已複製 ✔'; var self=this; setTimeout(function(){ self.textContent='再複製店號'; },1200); };
+    document.getElementById('chuti-back').onclick=function(){ openModal(); };
+    document.getElementById('chuti-close2').onclick=closeModal;
+  }
+
+  function hideSelfCollect(){
+    if(!onCheckout()) return;
+    var inp=document.querySelector('input[name="checkout[pickup_address][is_self_collect]"]');
+    if(!inp) return;
+    var box=inp.closest('.card')||inp.parentElement;
+    if(!box || box.dataset.chutiHidden) return;
+    var self=document.querySelector('input[name="checkout[pickup_address][is_self_collect]"][value="true"]');
+    if(self && !self.checked){ self.checked=true; self.dispatchEvent(new Event('change',{bubbles:true})); }
+    box.style.display='none'; box.dataset.chutiHidden='1';
+  }
+
+  function tick(){ try{ addBtn(); hideSelfCollect(); }catch(e){} }
+  document.addEventListener('DOMContentLoaded',tick);
+  var n=0,iv=setInterval(function(){ tick(); if(++n>120) clearInterval(iv); },400);
+  try{ new MutationObserver(tick).observe(document.documentElement,{childList:true,subtree:true}); }catch(e){}
+})();
+</script>
